@@ -513,7 +513,7 @@ function App() {
       <header className="topbar">
         <div className="brand">
           <span className="brand-mark">
-            <img src="/bnu-emblem.jpg" alt="北京师范大学校徽" />
+            <img src={`${import.meta.env.BASE_URL}bnu-emblem.jpg`} alt="北京师范大学校徽" />
           </span>
           <div className="brand-copy">
             <h1>{PLATFORM_TITLE}</h1>

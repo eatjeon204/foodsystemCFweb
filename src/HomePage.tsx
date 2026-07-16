@@ -2,6 +2,8 @@ import { ArrowRight, ChevronRight, Database, Leaf, MapPinned, Sprout } from 'luc
 import './HomePage.css'
 
 const PLATFORM_TITLE = 'AgriLCA China'
+const BASE_URL = import.meta.env.BASE_URL
+const WORKSPACE_URL = '#/workspace'
 
 const foundations = [
   {
@@ -58,8 +60,8 @@ function HomePage() {
   return (
     <main className="pam-home">
       <header className="pam-nav">
-        <a className="pam-logo" href="/" aria-label={PLATFORM_TITLE}>
-          <img className="bnu-mark" src="/bnu-emblem.jpg" alt="北京师范大学" />
+        <a className="pam-logo" href={BASE_URL} aria-label={PLATFORM_TITLE}>
+          <img className="bnu-mark" src={`${BASE_URL}bnu-emblem.jpg`} alt="北京师范大学" />
           <span>Agri</span><b>LCA</b><i>China</i>
         </a>
         <nav aria-label="主页导航">
@@ -67,7 +69,7 @@ function HomePage() {
           <a href="#workspace">研究工作台</a>
           <a href="#resources">平台能力</a>
         </nav>
-        <a className="pam-nav-action" href="/workspace">进入模型 <ArrowRight size={16} /></a>
+        <a className="pam-nav-action" href={WORKSPACE_URL}>进入模型 <ArrowRight size={16} /></a>
       </header>
 
       <section className="pam-hero">
@@ -119,7 +121,7 @@ function HomePage() {
           {pathways.map(({ eyebrow, title, copy, action, icon: Icon }, index) => (
             <article className="pathway" key={eyebrow}>
               <div className="pathway-number">0{index + 1}</div>
-              <div className="pathway-copy"><p>{eyebrow}</p><h3>{title}</h3><span>{copy}</span><a href="/workspace">{action} <ArrowRight size={17} /></a></div>
+              <div className="pathway-copy"><p>{eyebrow}</p><h3>{title}</h3><span>{copy}</span><a href={WORKSPACE_URL}>{action} <ArrowRight size={17} /></a></div>
               <div className={`pathway-visual visual-${index + 1}`}><Icon strokeWidth={1.05} /><span>{eyebrow}</span></div>
             </article>
           ))}
@@ -132,7 +134,7 @@ function HomePage() {
       </section>
 
       <section className="resources-section" id="resources">
-        <div className="resources-heading"><p>PLATFORM CAPABILITIES</p><h2>研究过程，不止于计算</h2><a href="/workspace">打开研究工作台 <ArrowRight size={18} /></a></div>
+        <div className="resources-heading"><p>PLATFORM CAPABILITIES</p><h2>研究过程，不止于计算</h2><a href={WORKSPACE_URL}>打开研究工作台 <ArrowRight size={18} /></a></div>
         <div className="resource-grid">
           <article><span>01</span><h3>核算结果</h3><p>单位碳足迹与各投入来源的贡献分解</p></article>
           <article><span>02</span><h3>时空分析</h3><p>省级地图和年度趋势，定位差异与变化</p></article>
@@ -141,9 +143,9 @@ function HomePage() {
         </div>
       </section>
 
-      <section className="pam-contact"><p>AGRICULTURAL LCA RESEARCH</p><h2>开始探索<br />省级农食系统</h2><a href="/workspace">进入碳足迹核算平台 <ArrowRight size={19} /></a></section>
+      <section className="pam-contact"><p>AGRICULTURAL LCA RESEARCH</p><h2>开始探索<br />省级农食系统</h2><a href={WORKSPACE_URL}>进入碳足迹核算平台 <ArrowRight size={19} /></a></section>
 
-      <footer className="pam-footer"><a className="pam-logo" href="/"><img className="bnu-mark" src="/bnu-emblem.jpg" alt="北京师范大学" /><span>Agri</span><b>LCA</b><i>China</i></a><p>北京师范大学 · 中国省级农食系统碳足迹核算平台</p><div><a href="#framework">研究框架</a><a href="#resources">平台能力</a><a href="/workspace">进入模型</a></div><small>© 2026 AgriLCA China</small></footer>
+      <footer className="pam-footer"><a className="pam-logo" href={BASE_URL}><img className="bnu-mark" src={`${BASE_URL}bnu-emblem.jpg`} alt="北京师范大学" /><span>Agri</span><b>LCA</b><i>China</i></a><p>北京师范大学 · 中国省级农食系统碳足迹核算平台</p><div><a href="#framework">研究框架</a><a href="#resources">平台能力</a><a href={WORKSPACE_URL}>进入模型</a></div><small>© 2026 AgriLCA China</small></footer>
     </main>
   )
 }
