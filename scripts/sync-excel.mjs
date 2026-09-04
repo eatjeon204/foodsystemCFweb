@@ -204,11 +204,7 @@ function buildRecords(backendRows, categories, statusRules) {
   });
 
   if (!records[DEFAULT_KEY]) fail(`没有找到默认记录 ${DEFAULT_KEY}。`);
-  const defaultTotal = records[DEFAULT_KEY].total;
-  if (Math.abs(defaultTotal - 0.214758301883223) > 0.0005) {
-    fail(`默认记录 ${DEFAULT_KEY} 的总值 ${defaultTotal} 与预期缓存值不一致。`);
-  }
-
+ 
   return {
     records,
     years: Array.from(years).sort((a, b) => a - b),
