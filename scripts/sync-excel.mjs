@@ -12,6 +12,11 @@ const outputDir = path.resolve(projectRoot, 'src', 'data');
 
 const REQUIRED_SHEETS = ['核算端', '后台数据', '单位统一与碳足迹核算'];
 const DEFAULT_KEY = '2021_广东';
+// 后台数据 D 列（索引 3）是“作物”。该表现在同时存放稻谷 / 小麦 / 玉米三种作物，
+// 同步时必须按作物筛选，否则同一个“年份_省份”键会被后面作物的行覆盖。
+const BACKEND_CROP_COLUMN = 3;
+const DEFAULT_CROP = '稻谷';
+const TARGET_CROP = (process.env.MODEL_CROP || '').trim() || DEFAULT_CROP;
 
 function fail(message) {
   console.error(`[sync-excel] ${message}`);
@@ -148,15 +153,25 @@ function extractAssumptions(summaryRows) {
   return assumptions.slice(0, 12);
 }
 
-function buildRecords(backendRows, categories, statusRules) {
+function buildRecords(backendRows, categories, statusRules, crop) {
   const records = {};
   const years = new Set();
   const provinces = new Set();
+  const cropCounts = new Map();
+  let skippedRows = 0;
 
   backendRows.slice(3).forEach((row) => {
     const province = asText(row[1]);
     const year = asNumber(row[2]);
+    const rowCrop = asText(row[BACKEND_CROP_COLUMN]);
+    if (rowCrop) cropCounts.set(rowCrop, (cropCounts.get(rowCrop) ?? 0) + 1);
     if (!province || year === null) return;
+
+    // 只保留目标作物；其余作物（小麦 / 玉米）直接跳过，避免覆盖稻谷结果。
+    if (rowCrop && rowCrop !== crop) {
+      skippedRows += 1;
+      return;
+    }
 
     const items = categories.map((category) => {
       const strength = asNumber(row[category.sourceColumn - 1]);
@@ -187,6 +202,9 @@ function buildRecords(backendRows, categories, statusRules) {
       items.reduce((sum, item) => sum + (item.carbonFootprint ?? 0), 0),
     );
     const key = `${year}_${province}`;
+    if (records[key]) {
+      console.warn(`[sync-excel] 警告：${key}（${crop}）在后台数据中出现多次，后一行会覆盖前一行。`);
+    }
 
     years.add(year);
     provinces.add(province);
@@ -194,7 +212,7 @@ function buildRecords(backendRows, categories, statusRules) {
       key,
       year,
       province,
-      crop: '稻谷',
+      crop,
       total,
       perTon: round((total ?? 0) * 1000),
       unit: 'kg CO₂e/kg 稻谷',
@@ -203,12 +221,19 @@ function buildRecords(backendRows, categories, statusRules) {
     };
   });
 
-  if (!records[DEFAULT_KEY]) fail(`没有找到默认记录 ${DEFAULT_KEY}。`);
+  if (Object.keys(records).length === 0) {
+    const available = Array.from(cropCounts.keys()).join('、') || '(无)';
+    fail(`后台数据中没有作物为“${crop}”的数据行，可选作物：${available}。可用 MODEL_CROP 环境变量指定。`);
+  }
+
+  if (!records[DEFAULT_KEY]) fail(`没有找到默认记录 ${DEFAULT_KEY}（作物：${crop}）。`);
  
   return {
     records,
     years: Array.from(years).sort((a, b) => a - b),
     provinces: Array.from(provinces).sort((a, b) => a.localeCompare(b, 'zh-Hans-CN')),
+    cropCounts,
+    skippedRows,
   };
 }
 
@@ -237,11 +262,25 @@ const summaryRows = toRows(summarySheet);
 const categories = extractCategories(mainSheet, mainRows);
 const statusRules = extractStatusRules(summarySheet, summaryRows, categories);
 const assumptions = extractAssumptions(summaryRows);
-const { records, years, provinces } = buildRecords(backendRows, categories, statusRules);
+// 核算端 B3 是 Excel 当前下拉选中的作物，只用于提示，不覆盖 MODEL_CROP。
+const sheetCrop = asText((mainRows[2] ?? [])[1]);
+if (sheetCrop && sheetCrop !== TARGET_CROP && !process.env.MODEL_CROP) {
+  console.warn(
+    `[sync-excel] 提示：核算端当前作物是“${sheetCrop}”，但本次同步按默认作物“${TARGET_CROP}”导出。如需导出其他作物，请设置 MODEL_CROP=作物名。`,
+  );
+}
+
+const { records, years, provinces, cropCounts, skippedRows } = buildRecords(
+  backendRows,
+  categories,
+  statusRules,
+  TARGET_CROP,
+);
 
 const modelData = {
   syncedAt: new Date().toISOString(),
   sourceWorkbook: path.relative(projectRoot, workbookPath).replaceAll('\\', '/'),
+  crop: TARGET_CROP,
   defaultSelection: { year: 2021, province: '广东' },
   years,
   provinces,
@@ -259,6 +298,7 @@ const modelMeta = {
     provinceCount: provinces.length,
     recordCount: Object.keys(records).length,
   },
+  crop: TARGET_CROP,
   formulas: [
     '投入强度 = 投入量 / 稻谷产量',
     '分项碳足迹 = 投入强度 × 系数',
@@ -270,6 +310,7 @@ const modelMeta = {
     '更新 Excel 后运行 npm run sync-excel，网站数据会重新生成。',
     '新增年份或省份需继续保存在“后台数据”现有字段结构中。',
     '新增核算项需继续使用“核算端”的六列结构，并保留“碳足迹总计”行。',
+    '后台数据含多个作物时，同步只导出 MODEL_CROP 指定的作物（默认稻谷）。',
   ],
 };
 
@@ -285,6 +326,13 @@ fs.writeFileSync(
   'utf8',
 );
 
+const cropSummary = Array.from(cropCounts.entries())
+  .map(([name, count]) => `${name}:${count}`)
+  .join('，');
+
 console.log(
   `[sync-excel] synced ${Object.keys(records).length} records, ${years.length} years, ${provinces.length} provinces from ${path.basename(workbookPath)}`,
+);
+console.log(
+  `[sync-excel] 作物 = ${TARGET_CROP}；后台数据作物分布 ${cropSummary}；已跳过其他作物 ${skippedRows} 行`,
 );
