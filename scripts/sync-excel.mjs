@@ -78,7 +78,7 @@ function extractCategories(mainSheet, mainRows) {
   const totalRow = findTotalRow(mainRows);
   const categories = [];
 
-  for (let rowIndex = 3; rowIndex < totalRow; rowIndex += 1) {
+  for (let rowIndex = 4; rowIndex < totalRow; rowIndex += 1) {
     const row = mainRows[rowIndex] ?? [];
     const name = asText(row[0]);
     if (!name) continue;

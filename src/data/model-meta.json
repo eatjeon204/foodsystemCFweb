@@ -1,12 +1,12 @@
 {
   "title": "北京师范大学中国省级农食系统LCA碳足迹核算平台",
   "sourceWorkbook": "../模型test.xlsx",
-  "syncedAt": "2026-09-04T06:30:29.405Z",
+  "syncedAt": "2026-09-24T02:25:01.240Z",
   "dataRange": {
     "years": "2000-2022",
     "yearCount": 23,
-    "provinceCount": 31,
-    "recordCount": 713
+    "provinceCount": 32,
+    "recordCount": 736
   },
   "formulas": [
     "投入强度 = 投入量 / 稻谷产量",
