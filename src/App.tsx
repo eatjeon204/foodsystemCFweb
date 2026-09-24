@@ -27,10 +27,7 @@ type CarbonItem = {
   factor: number
   factorUnit: string
   carbonFootprint: number | null
-  resultUnit: string
   dataStatus: string
-  note: string
-  backendColumn: number
 }
 
 type CarbonRecord = {
@@ -45,12 +42,26 @@ type CarbonRecord = {
   items: CarbonItem[]
 }
 
+type CarbonCategory = {
+  id: string
+  name: string
+  sourceColumn: number
+  strengthUnit: string
+  factor: number
+  factorUnit: string
+  resultUnit: string
+}
+
 type ModelData = {
   syncedAt: string
   sourceWorkbook: string
-  defaultSelection: { year: number; province: string }
+  crop: string
+  crops: string[]
+  defaultSelection: { year: number; province: string; crop: string }
   years: number[]
   provinces: string[]
+  categories: CarbonCategory[]
+  categoriesByCrop: Record<string, CarbonCategory[]>
   records: Record<string, CarbonRecord>
 }
 
@@ -128,12 +139,46 @@ function formatShort(value: number | null | undefined) {
   return value < 0.01 ? value.toFixed(4) : value.toFixed(3)
 }
 
-function formatUnit(unit: string) {
-  return unit.replaceAll('CO2', 'CO₂').replaceAll(' 稻谷', '')
+function formatUnit(unit: string, crop: string) {
+  return unit.replaceAll('CO2', 'CO₂').replaceAll(` ${crop}`, '')
 }
 
 function recordKey(year: number, province: string) {
   return `${year}_${province}`
+}
+
+// 后台数据现在同时存放稻谷 / 小麦 / 玉米，按作物建索引后年份与省份的可选项也会跟着变。
+const CROP_INDEX: Record<
+  string,
+  { records: Record<string, CarbonRecord>; years: number[]; provinces: string[] }
+> = {}
+
+for (const record of Object.values(modelData.records)) {
+  const bucket = (CROP_INDEX[record.crop] ??= {
+    records: {},
+    years: [],
+    provinces: [],
+  })
+  bucket.records[recordKey(record.year, record.province)] = record
+}
+
+for (const bucket of Object.values(CROP_INDEX)) {
+  bucket.years = [
+    ...new Set(Object.values(bucket.records).map((record) => record.year)),
+  ].sort((a, b) => a - b)
+  bucket.provinces = [
+    ...new Set(Object.values(bucket.records).map((record) => record.province)),
+  ].sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'))
+}
+
+function pickYear(years: number[], fallback: number) {
+  if (years.length === 0) return fallback
+  return years.includes(2015) ? 2015 : years[years.length - 1]
+}
+
+function pickProvince(provinces: string[], fallback: string) {
+  if (provinces.length === 0) return fallback
+  return provinces.includes('北京') ? '北京' : provinces[0]
 }
 
 function statusClass(status: string) {
@@ -447,34 +492,54 @@ function ChinaMap({
   return <div className="map-chart" ref={chartRef} />
 }
 
-function App() {
-  const defaultYear = modelData.years.includes(2015)
-    ? 2015
-    : modelData.years.at(-1) ?? 2021
-  const defaultProvince = modelData.provinces.includes('北京')
-    ? '北京'
-    : modelData.provinces[0]
+const cropOptions = modelData.crops ?? [modelData.crop]
+const defaultCrop =
+  cropOptions.find((crop) => crop === modelData.defaultSelection.crop) ??
+  cropOptions[0]
 
-  const [selectedYear, setSelectedYear] = useState(defaultYear)
-  const [selectedProvince, setSelectedProvince] = useState(defaultProvince)
+function App() {
+  const [selectedCrop, setSelectedCrop] = useState(defaultCrop)
+  const [selectedYear, setSelectedYear] = useState(() =>
+    pickYear(CROP_INDEX[defaultCrop]?.years ?? [], 2021),
+  )
+  const [selectedProvince, setSelectedProvince] = useState(() =>
+    pickProvince(CROP_INDEX[defaultCrop]?.provinces ?? [], ''),
+  )
   const [activeTab, setActiveTab] = useState<ActiveTab>('核算')
   const [hoveredTab, setHoveredTab] = useState<ActiveTab | null>(null)
   const [lastCalculatedAt, setLastCalculatedAt] = useState('刚刚')
 
-  const currentRecord = modelData.records[recordKey(selectedYear, selectedProvince)]
+  const cropIndex = CROP_INDEX[selectedCrop]
+  const years = cropIndex?.years ?? []
+  const provinces = cropIndex?.provinces ?? []
+
+  const handleCropChange = (crop: string) => {
+    setSelectedCrop(crop)
+    const next = CROP_INDEX[crop]
+    if (!next) return
+    if (!next.years.includes(selectedYear)) {
+      setSelectedYear(pickYear(next.years, selectedYear))
+    }
+    if (!next.provinces.includes(selectedProvince)) {
+      setSelectedProvince(pickProvince(next.provinces, selectedProvince))
+    }
+  }
+
+  const currentRecord =
+    cropIndex?.records[recordKey(selectedYear, selectedProvince)] ?? null
   const provinceTrend = useMemo(
     () =>
-      modelData.years
-        .map((year) => modelData.records[recordKey(year, selectedProvince)])
+      (cropIndex?.years ?? [])
+        .map((year) => cropIndex?.records[recordKey(year, selectedProvince)])
         .filter((record): record is CarbonRecord => Boolean(record)),
-    [selectedProvince],
+    [cropIndex, selectedProvince],
   )
   const nationalRecords = useMemo(
     () =>
-      modelData.provinces
-        .map((province) => modelData.records[recordKey(selectedYear, province)])
+      (cropIndex?.provinces ?? [])
+        .map((province) => cropIndex?.records[recordKey(selectedYear, province)])
         .filter((record): record is CarbonRecord => Boolean(record)),
-    [selectedYear],
+    [cropIndex, selectedYear],
   )
   const nationalStats = useMemo(() => {
     const ranked = [...nationalRecords].sort((a, b) => a.total - b.total)
@@ -545,12 +610,26 @@ function App() {
 
           <div className="header-controls" aria-label="参数设置">
             <label>
+              作物
+              <select
+                value={selectedCrop}
+                onChange={(event) => handleCropChange(event.target.value)}
+              >
+                {cropOptions.map((crop) => (
+                  <option key={crop} value={crop}>
+                    {crop}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
               年份
               <select
                 value={selectedYear}
                 onChange={(event) => setSelectedYear(Number(event.target.value))}
               >
-                {modelData.years.map((year) => (
+                {years.map((year) => (
                   <option key={year} value={year}>
                     {year}
                   </option>
@@ -564,7 +643,7 @@ function App() {
                 value={selectedProvince}
                 onChange={(event) => setSelectedProvince(event.target.value)}
               >
-                {modelData.provinces.map((province) => (
+                {provinces.map((province) => (
                   <option key={province} value={province}>
                     {province}
                   </option>
@@ -600,13 +679,13 @@ function App() {
                     单位碳足迹
                   </span>
                   <strong>{formatNumber(currentRecord.total, 3)}</strong>
-                  <p>{formatUnit(currentRecord.unit)}</p>
+                  <p>{formatUnit(currentRecord.unit, selectedCrop)}</p>
                 </article>
 
                 <div className="footprint-contribution">
                   <div className="section-heading">
                     <h2>碳足迹贡献分解</h2>
-                    <span>{formatUnit(currentRecord.unit)}</span>
+                    <span>{formatUnit(currentRecord.unit, selectedCrop)}</span>
                   </div>
                   <ContributionBars record={currentRecord} />
                 </div>
@@ -640,7 +719,7 @@ function App() {
                             {formatShort(item.strength)} {item.strengthUnit}
                           </td>
                           <td>
-                            {formatShort(item.factor)} {formatUnit(item.factorUnit)}
+                            {formatShort(item.factor)} {formatUnit(item.factorUnit, selectedCrop)}
                           </td>
                           <td>{formatNumber(item.carbonFootprint, 4)}</td>
                           <td>{(share * 100).toFixed(1)}%</td>
@@ -663,7 +742,7 @@ function App() {
               <article className="panel tsb-panel map-panel">
                 <div className="section-heading">
                   <h2>Space 空间</h2>
-                  <span>{selectedYear} 年 · {selectedProvince}</span>
+                  <span>{selectedYear} 年 · {selectedProvince} · {selectedCrop}</span>
                 </div>
                 <ChinaMap records={nationalRecords} selectedProvince={selectedProvince} />
                 <div className="space-stats">
@@ -681,7 +760,7 @@ function App() {
                 <TrendChart points={provinceTrend} selectedYear={selectedYear} />
                 <div className="tsb-summary">
                   <strong>{formatNumber(currentRecord.total, 3)}</strong>
-                  <span>{selectedYear} 年 {formatUnit(currentRecord.unit)}</span>
+                  <span>{selectedYear} 年 {formatUnit(currentRecord.unit, selectedCrop)}</span>
                 </div>
               </article>
 
@@ -691,7 +770,7 @@ function App() {
                 </div>
                 <div className="boundary-current">
                   <span>当前接入边界</span>
-                  <strong>水稻 · 生产端</strong>
+                  <strong>{selectedCrop} · 生产端</strong>
                   <p>当前覆盖农业生产投入，后续扩展更多食物与生命周期阶段</p>
                 </div>
                 <div className="boundary-stages" aria-label="生命周期边界">
